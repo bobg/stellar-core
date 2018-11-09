@@ -22,59 +22,49 @@ BucketApplicator::operator bool() const
     return (bool)mBucketIter;
 }
 
-typedef std::vector<soci::details::use_type_ptr> use_vec;
-typedef std::vector<use_vec> use_vec_vec;
-typedef std::pair<std::string, use_vec> query_and_args;
-
 void
 BucketApplicator::advance()
 {
-    soci::transaction sqlTx(mDb.getSession());
-    std::map<std::string, std::vector<use_vec>> queries_and_args;
+    auto &session = mDb.getSession();
+    soci::transaction sqlTx(session);
+
+    // This maps a query to N vectors.
+    // Each vector records successive values for a specific query parameter.
+    std::map<std::string, UseVecVec> queries_and_args;
+
     while (mBucketIter)
     {
         LedgerHeader lh;
         LedgerDelta delta(lh, mDb, false);
 
+        QueryAndArgs qa;
+
         auto const& entry = *mBucketIter;
         if (entry.type() == LIVEENTRY)
         {
             EntryFrame::pointer ep = EntryFrame::FromXDR(entry.liveEntry());
-            query_and_args qa = ep->qaStoreAddOrChange(delta, mDb);
-            // qa is now pair<QUERY, vector<ARG1, ARG2, ..., ARGn>>
-            use_vec_vec& argses = queries_and_args[qa.first];
-            if (argses.size() == 0) {
-              for (auto const& a: qa.second) {
-                use_vec v;
-                v.push_back(a);
-                argses.push_back(v);
-              }
-            } else if (argses.size() != qa.second.size()) {
-              // xxx error
-            } else {
-              for (int i = 0; i < argses.size(); ++i) {
-                argses[i].push_back(qa.second[i])
-              }
-            }
+            ep->storeAddOrChange(delta, mDb, qa);
         }
         else
         {
-          query_and_args qa = EntryFrame::qaStoreDelete(delta, mDb, entry.deadEntry());
-          use_vec_vec& argses = queries_and_args[qa.first];
-          if (argses.size() == 0) {
-            for (auto const& a: qa.second) {
-              use_vec v;
-              v.push_back(a);
-              argses.push_back(v);
-            }
-          } else if (argses.size() != qa.second.size()) {
-            // xxx error
-          } else {
-            for (int i = 0; i < argses.size(); ++i) {
-              argses[i].push_back(qa.second[i]);
-            }
+            EntryFrame::storeDelete(delta, mDb, entry.deadEntry(), qa);
+        }
+
+        UseVecVec& argses = queries_and_args[qa.first];
+        if (argses.size() == 0) {
+          for (auto const& a: qa.second) {
+            UseVec v;
+            v.push_back(a);
+            argses.push_back(v);
+          }
+        } else if (argses.size() != qa.second.size()) {
+          // xxx error
+        } else {
+          for (int i = 0; i < argses.size(); ++i) {
+            argses[i].push_back(qa.second[i]);
           }
         }
+
         ++mBucketIter;
         // No-op, just to avoid needless rollback.
         delta.commit();
@@ -84,8 +74,23 @@ BucketApplicator::advance()
         }
     }
 
-    
+    // We collected the queries and their arguments above.
+    // Now execute them.
 
+    for (auto const& it: queries_and_args) {
+      auto const& query = it.first;
+      auto const& args = it.second;
+
+      soci::statement st(session);
+      for (auto const& a: args) {
+        st.exchange(a);
+      }
+
+      st.alloc();
+      st.prepare(query);
+      st.define_and_bind();
+      st.execute(true);
+    }
 
     sqlTx.commit();
     mDb.clearPreparedStatementCache();

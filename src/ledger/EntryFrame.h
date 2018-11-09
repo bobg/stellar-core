@@ -7,6 +7,7 @@
 #include "bucket/LedgerCmp.h"
 #include "overlay/StellarXDR.h"
 #include "util/NonCopyable.h"
+#include <soci.h>
 
 /*
 Frame
@@ -19,6 +20,15 @@ namespace stellar
 {
 class Database;
 class LedgerDelta;
+
+// A vector of soci use(...) values.
+typedef std::vector<soci::details::use_type_ptr> UseVec;
+
+// A vector of UseVecs.
+typedef std::vector<UseVec> UseVecVec;
+
+// A SQL query in string form and the values to bind to it.
+typedef std::pair<std::string, UseVec> QueryAndArgs;
 
 class EntryFrame : public NonMovableOrCopyable
 {
@@ -71,15 +81,26 @@ class EntryFrame : public NonMovableOrCopyable
     virtual EntryFrame::pointer copy() const = 0;
 
     LedgerKey const& getKey() const;
-    virtual void storeDelete(LedgerDelta& delta, Database& db) const = 0;
+
+    void storeDelete(LedgerDelta& delta, Database& db) const;
+    virtual void storeDelete(LedgerDelta& delta, Database& db, QueryAndArgs& qa) const = 0;
+
     // change/add may update the entry (last modified)
-    virtual void storeChange(LedgerDelta& delta, Database& db) = 0;
-    virtual void storeAdd(LedgerDelta& delta, Database& db) = 0;
+
+    void storeChange(LedgerDelta& delta, Database& db);
+    virtual void storeChange(LedgerDelta& delta, Database& db, QueryAndArgs& qa) = 0;
+
+    void storeAdd(LedgerDelta& delta, Database& db);
+    virtual void storeAdd(LedgerDelta& delta, Database& db, QueryAndArgs& qa) = 0;
 
     void storeAddOrChange(LedgerDelta& delta, Database& db);
+    void storeAddOrChange(LedgerDelta& delta, Database& db, QueryAndArgs& qa);
+
     static bool exists(Database& db, LedgerKey const& key);
     static void storeDelete(LedgerDelta& delta, Database& db,
                             LedgerKey const& key);
+    static void storeDelete(LedgerDelta& delta, Database& db,
+                            LedgerKey const& key, QueryAndArgs& qa);
 };
 
 // static helper for getting a LedgerKey from a LedgerEntry.
