@@ -207,6 +207,52 @@ EntryFrame::storeAddOrChange(LedgerDelta& delta, Database& db)
     }
 }
 
+void
+EntryFrame::storeAddOrChange(LedgerDelta& delta, Database& db, QueryAndArgs& qa)
+{
+    if (exists(db, getKey()))
+    {
+        storeChange(delta, db, qa);
+    }
+    else
+    {
+        storeAdd(delta, db, qa);
+    }
+}
+
+void
+EntryFrame::storeChange(LedgerDelta& delta, Database& db) {
+  QueryAndArgs qa;
+
+  storeChange(delta, db, qa);
+
+  soci::statement st(db.getSession());
+  for (auto const& arg: qa.second) {
+    st.exchange(arg);
+  }
+  st.alloc();
+  st.prepare(qa.first);
+  st.define_and_bind();
+  st.execute(true);
+}
+
+void
+EntryFrame::storeAdd(LedgerDelta& delta, Database& db) {
+  QueryAndArgs qa;
+
+  storeAdd(delta, db, qa);
+
+  // TODO: factor this out of here and storeChange.
+  soci::statement st(db.getSession());
+  for (auto const& arg: qa.second) {
+    st.exchange(arg);
+  }
+  st.alloc();
+  st.prepare(qa.first);
+  st.define_and_bind();
+  st.execute(true);
+}
+
 bool
 EntryFrame::exists(Database& db, LedgerKey const& key)
 {

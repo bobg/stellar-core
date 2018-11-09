@@ -78,11 +78,11 @@ BucketApplicator::advance()
     // Now execute them.
 
     for (auto const& it: queries_and_args) {
-      auto const& query = it.first;
-      auto const& args = it.second;
+      std::string const& query = it.first;
+      UseVecVec const& args = it.second;
 
       soci::statement st(session);
-      for (auto const& a: args) {
+      for (UseVec const& a: args) {
         st.exchange(a);
       }
 
