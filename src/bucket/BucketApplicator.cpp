@@ -8,6 +8,8 @@
 #include "ledger/LedgerDelta.h"
 #include "util/Logging.h"
 
+#include <chrono>
+
 namespace stellar
 {
 
@@ -22,9 +24,18 @@ BucketApplicator::operator bool() const
     return (bool)mBucketIter;
 }
 
+typedef std::chrono::duration<double, std::ratio<1> > second_t;
+
+static int adv_calls = 0;
+static int adv_iters = 0;
+static second_t adv_cum_time(0);
+
 void
 BucketApplicator::advance()
 {
+  typedef std::chrono::high_resolution_clock clock_t;
+  std::chrono::time_point<clock_t> beg = clock_t::now();
+
     soci::transaction sqlTx(mDb.getSession());
     while (mBucketIter)
     {
@@ -48,8 +59,17 @@ BucketApplicator::advance()
         {
             break;
         }
+        ++adv_iters;
     }
     sqlTx.commit();
+
+    std::chrono::time_point<clock_t> end = clock_t::now();
+
+    ++adv_calls;
+    adv_cum_time += end - beg;
+
+    CLOG(INFO, "Bucket") << "* " << adv_calls << " call(s) to BucketApplicator::advance, " << adv_iters << " iteration(s), cumulative time " << adv_cum_time.count() << " second(s)";
+
     mDb.clearPreparedStatementCache();
 
     if (!mBucketIter || (mSize & 0xfff) == 0xfff)
