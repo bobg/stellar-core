@@ -324,4 +324,49 @@ LedgerEntryKey(LedgerEntry const& e)
     }
     return k;
 }
+
+void
+AppendUseVal(soci::details::use_type_ptr& in, use_type_ptr* out) {
+  soci::details::use_type_base* p = in.get();
+
+  auto d = dynamic_cast<soci::details::use_type<char>*>(p);
+  if (d) {
+    if (xxxsomething about out) {
+      std::vector<char> v;
+      use_type_ptr u = soci::use(v);
+      *out = u;                 // xxx this is wrong
+    }
+    soci::details::use_type_base* p2 = out->get();
+    std::vector<char>* v = p2.get_data();
+  }
+
+  auto d = dynamic_cast<soci::details::use_type<short>*>(p);
+  if (d) {
+  }
+
+  auto d = dynamic_cast<soci::details::use_type<int>*>(p);
+  if (d) {
+  }
+
+  auto d = dynamic_cast<soci::details::use_type<unsigned long>*>(p);
+  if (d) {
+  }
+
+  auto d = dynamic_cast<soci::details::use_type<long long>*>(p);
+  if (d) {
+  }
+
+  auto d = dynamic_cast<soci::details::use_type<double>*>(p);
+  if (d) {
+  }
+
+  auto d = dynamic_cast<soci::details::use_type<std::string>*>(p);
+  if (d) {
+  }
+
+  auto d = dynamic_cast<soci::details::use_type<std::tm>*>(p);
+  if (d) {
+  }
+
+  // xxx error
 }

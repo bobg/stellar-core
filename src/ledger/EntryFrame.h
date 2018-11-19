@@ -24,9 +24,6 @@ class LedgerDelta;
 // A vector of soci use(...) values.
 typedef std::vector<soci::details::use_type_ptr> UseVec;
 
-// A vector of UseVecs.
-typedef std::vector<UseVec> UseVecVec;
-
 // A SQL query in string form and the values to bind to it.
 typedef std::pair<std::string, UseVec> QueryAndArgs;
 
