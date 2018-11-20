@@ -357,7 +357,8 @@ TrustFrame::storeDelete(LedgerDelta& delta, Database& db, LedgerKey const& key)
 }
 
 void
-TrustFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
+TrustFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode,
+                             bool bulk)
 {
     auto key = getKey();
     flushCachedEntry(key, db);
@@ -383,15 +384,21 @@ TrustFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
     string sql;
     bool insert = false;
 
-    PGconn* pg = 0;
+    bool pg = false;
     if (mode == 0)
     {
-        pg = db.getPGconn();
+        pg = true || db.isPG();
     }
 
     if (pg)
     {
-        sql = ("INSERT INTO trustlines "
+        string table = "trustlines";
+        if (bulk)
+        {
+            table += "_bulk";
+        }
+        sql = ("INSERT INTO " + table +
+               " "
                "(accountid, assettype, issuer, assetcode, balance, tlimit, "
                "flags, lastmodified, buyingliabilities, sellingliabilities) "
                "VALUES (:accountid, :assettype, :issuer, :assetcode, :b, :tl, "
@@ -467,6 +474,22 @@ TrustFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
     {
         delta.modEntry(*this);
     }
+}
+
+void
+TrustFrame::mergeBulkTable(soci::session& sess)
+{
+    sess << "UPDATE trustlines "
+         << "SET balance = b.balance, tlimit = b.tlimit, flags = b.flags, "
+            "lastmodified = b.lastmodified, buyingliabilities = "
+            "b.buyingliabilities, sellingliabilities = b.sellingliabilities "
+         << "FROM trustlines_bulk b "
+         << "WHERE trustlines.accountid = b.accountid AND trustlines.issuer = "
+            "b.issuer AND trustlines.assetcode = b.assetcode";
+
+    sess << "INSERT INTO trustlines "
+         << "SELECT * FROM trustlines_bulk "
+         << "ON CONFLICT (accountid, issuer, assetcode) DO NOTHING";
 }
 
 static const char* trustLineColumnSelector =

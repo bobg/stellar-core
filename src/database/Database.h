@@ -187,8 +187,8 @@ class Database : NonMovableOrCopyable
     // Access the underlying SOCI session object
     soci::session& getSession();
 
-    // Access the underlying Postgresql connection, if applicable
-    PGconn* getPGconn();
+    // Tell whether the backend is postgresql.
+    bool isPG() const;
 
     // Access the optional SOCI connection pool available for worker
     // threads. Throws an error if !canUsePool().

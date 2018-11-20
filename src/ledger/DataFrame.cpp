@@ -230,7 +230,8 @@ DataFrame::storeDelete(LedgerDelta& delta, Database& db, LedgerKey const& key)
 }
 
 void
-DataFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
+DataFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode,
+                            bool bulk)
 {
     touch(delta);
 
@@ -241,15 +242,21 @@ DataFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
     string sql;
     bool insert = false;
 
-    PGconn* pg = 0;
+    bool pg = false;
     if (mode == 0)
     {
-        pg = db.getPGconn();
+        pg = true || db.isPG(); // xxx
     }
 
     if (pg)
     {
-        sql = ("INSERT INTO accountdata "
+        string table = "accountdata";
+        if (bulk)
+        {
+            table += "_bulk";
+        }
+        sql = ("INSERT INTO " + table +
+               " "
                "(accountid, dataname, datavalue, lastmodified) "
                "VALUES (:aid, :dn, :dv, :lm) "
                "ON CONFLICT (accountid, dataname) "
@@ -306,6 +313,20 @@ DataFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
     {
         delta.modEntry(*this);
     }
+}
+
+void
+DataFrame::mergeBulkTable(soci::session& sess)
+{
+    sess << "UPDATE accountdata "
+         << "SET datavalue = b.datavalue, lastmodified = b.lastmodified "
+         << "FROM accountdata_bulk b "
+         << "WHERE accountdata.accountid = b.accountid AND "
+            "accountdata.dataname = b.dataname";
+
+    sess << "INSERT INTO accountdata "
+         << "SELECT * FROM accountdata_bulk "
+         << "ON CONFLICT (accountid, dataname) DO NOTHING";
 }
 
 void

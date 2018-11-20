@@ -506,7 +506,8 @@ OfferFrame::computePrice() const
 }
 
 void
-OfferFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
+OfferFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode,
+                             bool bulk)
 {
     touch(delta);
 
@@ -551,15 +552,22 @@ OfferFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
     string sql;
     bool insert = false;
 
-    PGconn* pg = 0;
+    bool pg = false;
     if (mode == 0)
     {
-        pg = db.getPGconn();
+        pg = true || db.isPG(); // xxx
     }
 
     if (pg)
     {
-        sql = ("INSERT INTO offers "
+        string table = "offers";
+        if (bulk)
+        {
+            table += "_bulk";
+        }
+
+        sql = ("INSERT INTO " + table +
+               " "
                "(sellerid, offerid, sellingassettype, sellingassetcode, "
                "sellingissuer, buyingassettype, buyingassetcode, buyingissuer, "
                "amount, pricen, priced, price, flags, lastmodified) "
@@ -644,6 +652,24 @@ OfferFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
     {
         delta.modEntry(*this);
     }
+}
+
+void
+OfferFrame::mergeBulkTable(soci::session& sess)
+{
+    sess << "UPDATE offers "
+         << "SET sellingassettype = b.sellingassettype, sellingassetcode = "
+            "b.sellingassetcode, sellingissuer = b.sellingissuer, "
+            "buyingassettype = b.buyingassettype, buyingassetcode = "
+            "b.buyingassetcode, buyingissuer = b.buyingissuer, amount = "
+            "b.amount, pricen = b.pricen, priced = b.priced, price = b.price, "
+            "flags = b.flags, lastmodified = b.lastmodified "
+         << "FROM offers_bulk b "
+         << "WHERE offers.offerid = b.offerid";
+
+    sess << "INSERT INTO offers "
+         << "SELECT * FROM offers_bulk "
+         << "ON CONFLICT (offerid) DO NOTHING";
 }
 
 void

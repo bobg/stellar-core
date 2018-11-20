@@ -24,6 +24,31 @@ BucketApplicator::operator bool() const
     return (bool)mBucketIter;
 }
 
+class bulkTableMgr
+{
+  public:
+    bulkTableMgr(Database& db)
+        : mDb(db), mCreated(EntryFrame::createBulkTables(db))
+    {
+    }
+    ~bulkTableMgr()
+    {
+        if (mCreated)
+        {
+            EntryFrame::dropBulkTables(mDb);
+        }
+    }
+
+    operator bool() const
+    {
+        return mCreated;
+    }
+
+  private:
+    Database& mDb;
+    bool mCreated;
+};
+
 typedef std::chrono::duration<double, std::ratio<1>> second_t;
 
 static int adv_calls = 0;
@@ -37,30 +62,41 @@ BucketApplicator::advance()
     std::chrono::time_point<clock_t> beg = clock_t::now();
 
     soci::transaction sqlTx(mDb.getSession());
-    while (mBucketIter)
-    {
-        LedgerHeader lh;
-        LedgerDelta delta(lh, mDb, false);
 
-        auto const& entry = *mBucketIter;
-        if (entry.type() == LIVEENTRY)
+    {
+        bulkTableMgr bulk(mDb);
+
+        while (mBucketIter)
         {
-            EntryFrame::pointer ep = EntryFrame::FromXDR(entry.liveEntry());
-            ep->storeAddOrChange(delta, mDb);
+            LedgerHeader lh;
+            LedgerDelta delta(lh, mDb, false);
+
+            auto const& entry = *mBucketIter;
+            if (entry.type() == LIVEENTRY)
+            {
+                EntryFrame::pointer ep = EntryFrame::FromXDR(entry.liveEntry());
+                ep->storeAddOrChange(delta, mDb, 0, bulk);
+            }
+            else
+            {
+                EntryFrame::storeDelete(delta, mDb, entry.deadEntry());
+            }
+            ++mBucketIter;
+            // No-op, just to avoid needless rollback.
+            delta.commit();
+            if ((++mSize & 0xff) == 0xff)
+            {
+                break;
+            }
+            ++adv_iters;
         }
-        else
+
+        if (bulk)
         {
-            EntryFrame::storeDelete(delta, mDb, entry.deadEntry());
+            EntryFrame::mergeBulkTables(mDb);
         }
-        ++mBucketIter;
-        // No-op, just to avoid needless rollback.
-        delta.commit();
-        if ((++mSize & 0xff) == 0xff)
-        {
-            break;
-        }
-        ++adv_iters;
     }
+
     sqlTx.commit();
 
     std::chrono::time_point<clock_t> end = clock_t::now();
@@ -68,10 +104,13 @@ BucketApplicator::advance()
     ++adv_calls;
     adv_cum_time += end - beg;
 
-    CLOG(INFO, "Bucket") << "* " << adv_calls
-                         << " call(s) to BucketApplicator::advance, "
-                         << adv_iters << " iteration(s), cumulative time "
-                         << adv_cum_time.count() << " second(s)";
+    if (adv_calls % 100 == 0)
+    {
+        CLOG(INFO, "Bucket")
+            << "* " << adv_calls << " call(s) to BucketApplicator::advance, "
+            << adv_iters << " iteration(s), cumulative time "
+            << adv_cum_time.count() << " second(s)";
+    }
 
     mDb.clearPreparedStatementCache();
 

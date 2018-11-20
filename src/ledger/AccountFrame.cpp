@@ -17,7 +17,7 @@
 #include "util/types.h"
 #include <algorithm>
 
-#include <libpq-fe.h>
+#include <iostream>
 
 using namespace soci;
 using namespace std;
@@ -557,109 +557,14 @@ AccountFrame::storeDelete(LedgerDelta& delta, Database& db,
 }
 
 void
-AccountFrame::storeUpdate(LedgerDelta& delta, Database& db, bool insert)
-{
-    touch(delta);
-
-    flushCachedEntry(db);
-
-    std::string actIDStrKey = KeyUtils::toStrKey(mAccountEntry.accountID);
-    std::string sql;
-
-    if (insert)
-    {
-        sql = std::string(
-            "INSERT INTO accounts ( accountid, balance, seqnum, "
-            "numsubentries, inflationdest, homedomain, thresholds, flags, "
-            "lastmodified, buyingliabilities, sellingliabilities ) "
-            "VALUES ( :id, :v1, :v2, :v3, :v4, :v5, :v6, :v7, :v8, :v9, :v10 "
-            ")");
-    }
-    else
-    {
-        sql = std::string(
-            "UPDATE accounts SET balance = :v1, seqnum = :v2, "
-            "numsubentries = :v3, "
-            "inflationdest = :v4, homedomain = :v5, thresholds = :v6, "
-            "flags = :v7, lastmodified = :v8, buyingliabilities = :v9, "
-            "sellingliabilities = :v10 WHERE accountid = :id");
-    }
-
-    auto prep = db.getPreparedStatement(sql);
-
-    soci::indicator inflation_ind = soci::i_null;
-    string inflationDestStrKey;
-
-    if (mAccountEntry.inflationDest)
-    {
-        inflationDestStrKey = KeyUtils::toStrKey(*mAccountEntry.inflationDest);
-        inflation_ind = soci::i_ok;
-    }
-
-    Liabilities liabilities;
-    soci::indicator liabilitiesInd = soci::i_null;
-    if (mAccountEntry.ext.v() == 1)
-    {
-        liabilities = mAccountEntry.ext.v1().liabilities;
-        liabilitiesInd = soci::i_ok;
-    }
-
-    string thresholds(decoder::encode_b64(mAccountEntry.thresholds));
-
-    {
-        soci::statement& st = prep.statement();
-        st.exchange(use(actIDStrKey, "id"));
-        st.exchange(use(mAccountEntry.balance, "v1"));
-        st.exchange(use(mAccountEntry.seqNum, "v2"));
-        st.exchange(use(mAccountEntry.numSubEntries, "v3"));
-        st.exchange(use(inflationDestStrKey, inflation_ind, "v4"));
-        string homeDomain(mAccountEntry.homeDomain);
-        st.exchange(use(homeDomain, "v5"));
-        st.exchange(use(thresholds, "v6"));
-        st.exchange(use(mAccountEntry.flags, "v7"));
-        st.exchange(use(getLastModified(), "v8"));
-        st.exchange(use(liabilities.buying, liabilitiesInd, "v9"));
-        st.exchange(use(liabilities.selling, liabilitiesInd, "v10"));
-        st.define_and_bind();
-        {
-            auto timer = insert ? db.getInsertTimer("account")
-                                : db.getUpdateTimer("account");
-            st.execute(true);
-        }
-
-        if (st.get_affected_rows() != 1)
-        {
-            throw std::runtime_error("Could not update data in SQL");
-        }
-        if (insert)
-        {
-            delta.addEntry(*this);
-        }
-        else
-        {
-            delta.modEntry(*this);
-        }
-    }
-
-    if (mUpdateSigners)
-    {
-        applySigners(db, insert);
-    }
-}
-
-void
-AccountFrame::applySigners(Database& db, bool insert)
+AccountFrame::applySigners(Database& db)
 {
     std::string actIDStrKey = KeyUtils::toStrKey(mAccountEntry.accountID);
 
     // generates a diff with the signers stored in the database
 
     // first, load the signers stored in the database for this account
-    std::vector<Signer> signers;
-    if (!insert)
-    {
-        signers = loadSigners(db, actIDStrKey);
-    }
+    std::vector<Signer> signers = loadSigners(db, actIDStrKey);
 
     auto it_new = mAccountEntry.signers.begin();
     auto it_old = signers.begin();
@@ -767,7 +672,8 @@ AccountFrame::applySigners(Database& db, bool insert)
 }
 
 void
-AccountFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
+AccountFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode,
+                               bool bulk)
 {
     touch(delta);
     flushCachedEntry(db);
@@ -795,16 +701,22 @@ AccountFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
     string sql;
     bool insert = false;
 
-    PGconn* pg = 0;
+    bool pg = false;
     if (mode == 0)
     {
-        pg = db.getPGconn();
+        pg = true || db.isPG(); // xxx
     }
 
     if (pg)
     {
+        string table = "accounts";
+        if (bulk)
+        {
+            table += "_bulk";
+        }
         sql =
-            ("INSERT INTO accounts "
+            ("INSERT INTO " + table +
+             " "
              "(accountid, balance, seqnum, numsubentries, inflationdest, "
              "homedomain, thresholds, flags, lastmodified, buyingliabilities, "
              "sellingliabilities) "
@@ -836,7 +748,9 @@ AccountFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
              "VALUES ( :id, :v1, :v2, :v3, :v4, :v5, :v6, :v7, :v8, :v9, :v10 "
              ")");
     }
+
     auto prep = db.getPreparedStatement(sql);
+    try
     {
         soci::statement& st = prep.statement();
         st.exchange(use(actIDStrKey, "id"));
@@ -885,9 +799,53 @@ AccountFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
             delta.modEntry(*this);
         }
     }
+    catch (...)
+    {
+        std::cout << "* exception from AccountFrame::storeAddOrChange, mode "
+                  << mode << ", bulk " << bulk << ", sql: " << sql << endl;
+        throw;
+    }
     if (mUpdateSigners)
     {
-        applySigners(db, insert);
+        applySigners(db);
+    }
+}
+
+void
+AccountFrame::mergeBulkTable(soci::session& sess)
+{
+    try
+    {
+        sess
+            << "UPDATE accounts "
+            << "SET balance = b.balance, seqnum = b.seqnum, numsubentries = "
+               "b.numsubentries, inflationdest = b.inflationdest, homedomain = "
+               "b.homedomain, thresholds = b.thresholds, flags = b.flags, "
+               "lastmodified = b.lastmodified, buyingliabilities = "
+               "b.buyingliabilities, sellingliabilities = b.sellingliabilities "
+            << "FROM accounts_bulk b "
+            << "WHERE accounts.accountid = b.accountid";
+    }
+    catch (...)
+    {
+        std::cout
+            << "* exception from AccountFrame::mergeBulkTable (UPDATE clause)"
+            << endl;
+        throw;
+    }
+
+    try
+    {
+        sess << "INSERT INTO accounts "
+             << "SELECT * FROM accounts_bulk "
+             << "ON CONFLICT (accountid) DO NOTHING";
+    }
+    catch (...)
+    {
+        std::cout
+            << "* exception from AccountFrame::mergeBulkTable (INSERT clause)"
+            << endl;
+        throw;
     }
 }
 

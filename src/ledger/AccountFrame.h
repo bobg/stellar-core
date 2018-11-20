@@ -28,7 +28,6 @@ int64_t getSellingLiabilities(AccountEntry const& acc, LedgerManager const& lm);
 
 class AccountFrame : public EntryFrame
 {
-    void storeUpdate(LedgerDelta& delta, Database& db, bool insert);
     bool mUpdateSigners;
 
     AccountEntry& mAccountEntry;
@@ -37,7 +36,7 @@ class AccountFrame : public EntryFrame
 
     static std::vector<Signer> loadSigners(Database& db,
                                            std::string const& actIDStrKey);
-    void applySigners(Database& db, bool insert);
+    void applySigners(Database& db);
 
   public:
     typedef std::shared_ptr<AccountFrame> pointer;
@@ -123,10 +122,11 @@ class AccountFrame : public EntryFrame
 
     // Instance-based overrides of EntryFrame.
     void storeDelete(LedgerDelta& delta, Database& db) const override;
-    void storeAddOrChange(LedgerDelta& delta, Database& db,
-                          int mode = 0) override;
+    void storeAddOrChange(LedgerDelta& delta, Database& db, int mode = 0,
+                          bool bulk = false) override;
 
     // Static helper that don't assume an instance.
+    static void mergeBulkTable(soci::session& sess);
     static void storeDelete(LedgerDelta& delta, Database& db,
                             LedgerKey const& key);
     static bool exists(Database& db, LedgerKey const& key);

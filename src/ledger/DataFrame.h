@@ -59,10 +59,11 @@ class DataFrame : public EntryFrame
 
     // Instance-based overrides of EntryFrame.
     void storeDelete(LedgerDelta& delta, Database& db) const override;
-    void storeAddOrChange(LedgerDelta& delta, Database& db,
-                          int mode = 0) override;
+    void storeAddOrChange(LedgerDelta& delta, Database& db, int mode = 0,
+                          bool bulk = false) override;
 
     // Static helpers that don't assume an instance.
+    static void mergeBulkTable(soci::session& sess);
     static void storeDelete(LedgerDelta& delta, Database& db,
                             LedgerKey const& key);
     static bool exists(Database& db, LedgerKey const& key);

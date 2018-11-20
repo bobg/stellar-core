@@ -330,13 +330,10 @@ Database::getSession()
     return mSession;
 }
 
-PGconn*
-Database::getPGconn()
+bool
+Database::isPG() const
 {
-    soci::details::session_backend* backend = mSession.get_backend();
-    soci::postgresql_session_backend* pg =
-        dynamic_cast<soci::postgresql_session_backend*>(backend);
-    return pg ? pg->conn_ : 0;
+    return mSession.get_backend_name() == "postgresql";
 }
 
 soci::connection_pool&

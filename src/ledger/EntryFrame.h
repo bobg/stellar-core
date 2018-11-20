@@ -77,7 +77,11 @@ class EntryFrame : public NonMovableOrCopyable
     void storeChange(LedgerDelta& delta, Database& db);
 
     virtual void storeAddOrChange(LedgerDelta& delta, Database& db,
-                                  int mode = 0) = 0;
+                                  int mode = 0, bool bulk = false) = 0;
+
+    static bool createBulkTables(Database& db);
+    static void mergeBulkTables(Database& db);
+    static void dropBulkTables(Database& db);
 
     static bool exists(Database& db, LedgerKey const& key);
     static void storeDelete(LedgerDelta& delta, Database& db,
