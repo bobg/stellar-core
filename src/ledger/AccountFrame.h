@@ -123,8 +123,7 @@ class AccountFrame : public EntryFrame
 
     // Instance-based overrides of EntryFrame.
     void storeDelete(LedgerDelta& delta, Database& db) const override;
-    void storeChange(LedgerDelta& delta, Database& db) override;
-    void storeAdd(LedgerDelta& delta, Database& db) override;
+    void storeAddOrChange(LedgerDelta& delta, Database& db, int mode = 0) override;
 
     // Static helper that don't assume an instance.
     static void storeDelete(LedgerDelta& delta, Database& db,

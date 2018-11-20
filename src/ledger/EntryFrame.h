@@ -72,11 +72,12 @@ class EntryFrame : public NonMovableOrCopyable
 
     LedgerKey const& getKey() const;
     virtual void storeDelete(LedgerDelta& delta, Database& db) const = 0;
-    // change/add may update the entry (last modified)
-    virtual void storeChange(LedgerDelta& delta, Database& db) = 0;
-    virtual void storeAdd(LedgerDelta& delta, Database& db) = 0;
 
-    void storeAddOrChange(LedgerDelta& delta, Database& db);
+    void storeAdd(LedgerDelta& delta, Database& db);
+    void storeChange(LedgerDelta& delta, Database& db);
+
+    virtual void storeAddOrChange(LedgerDelta& delta, Database& db, int mode = 0) = 0;
+
     static bool exists(Database& db, LedgerKey const& key);
     static void storeDelete(LedgerDelta& delta, Database& db,
                             LedgerKey const& key);

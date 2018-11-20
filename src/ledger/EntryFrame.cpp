@@ -194,19 +194,6 @@ EntryFrame::getKey() const
     return mKey;
 }
 
-void
-EntryFrame::storeAddOrChange(LedgerDelta& delta, Database& db)
-{
-    if (exists(db, getKey()))
-    {
-        storeChange(delta, db);
-    }
-    else
-    {
-        storeAdd(delta, db);
-    }
-}
-
 bool
 EntryFrame::exists(Database& db, LedgerKey const& key)
 {
@@ -223,6 +210,14 @@ EntryFrame::exists(Database& db, LedgerKey const& key)
     default:
         abort();
     }
+}
+
+void EntryFrame::storeAdd(LedgerDelta& delta, Database& db) {
+  storeAddOrChange(delta, db, 1);
+}
+
+void EntryFrame::storeChange(LedgerDelta& delta, Database& db) {
+  storeAddOrChange(delta, db, 2);
 }
 
 void

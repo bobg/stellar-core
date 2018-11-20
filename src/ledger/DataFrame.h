@@ -26,8 +26,6 @@ class DataFrame : public EntryFrame
 
     DataEntry& mData;
 
-    void storeUpdateHelper(LedgerDelta& delta, Database& db, bool insert);
-
   public:
     typedef std::shared_ptr<DataFrame> pointer;
 
@@ -61,8 +59,7 @@ class DataFrame : public EntryFrame
 
     // Instance-based overrides of EntryFrame.
     void storeDelete(LedgerDelta& delta, Database& db) const override;
-    void storeChange(LedgerDelta& delta, Database& db) override;
-    void storeAdd(LedgerDelta& delta, Database& db) override;
+    void storeAddOrChange(LedgerDelta& delta, Database& db, int mode = 0) override;
 
     // Static helpers that don't assume an instance.
     static void storeDelete(LedgerDelta& delta, Database& db,

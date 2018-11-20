@@ -37,6 +37,9 @@
 #include <thread>
 #include <vector>
 
+#include <libpq-fe.h>
+#include "soci-postgresql.h"
+
 extern "C" void register_factory_sqlite3();
 
 #ifdef USE_POSTGRES
@@ -325,6 +328,13 @@ Database::getSession()
     // global session can only be used from the main thread
     assertThreadIsMain();
     return mSession;
+}
+
+PGconn*
+Database::getPGconn() {
+  soci::details::session_backend* backend = mSession.get_backend();
+  soci::postgresql_session_backend* pg = dynamic_cast<soci::postgresql_session_backend*>(backend);
+  return pg ? pg->conn_ : 0;
 }
 
 soci::connection_pool&

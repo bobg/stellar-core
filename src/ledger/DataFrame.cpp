@@ -230,19 +230,7 @@ DataFrame::storeDelete(LedgerDelta& delta, Database& db, LedgerKey const& key)
 }
 
 void
-DataFrame::storeChange(LedgerDelta& delta, Database& db)
-{
-    storeUpdateHelper(delta, db, false);
-}
-
-void
-DataFrame::storeAdd(LedgerDelta& delta, Database& db)
-{
-    storeUpdateHelper(delta, db, true);
-}
-
-void
-DataFrame::storeUpdateHelper(LedgerDelta& delta, Database& db, bool insert)
+DataFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
 {
     touch(delta);
 
@@ -251,17 +239,30 @@ DataFrame::storeUpdateHelper(LedgerDelta& delta, Database& db, bool insert)
     std::string dataValue = decoder::encode_b64(mData.dataValue);
 
     string sql;
+    bool insert = false;
 
-    if (insert)
-    {
-        sql = "INSERT INTO accountdata "
-              "(accountid,dataname,datavalue,lastmodified)"
-              " VALUES (:aid,:dn,:dv,:lm)";
+    PGconn* pg = 0;
+    if (mode == 0) {
+        pg = db.getPGconn();
     }
-    else
-    {
-        sql = "UPDATE accountdata SET datavalue=:dv,lastmodified=:lm "
-              " WHERE accountid=:aid AND dataname=:dn";
+
+    if (pg) {
+      sql = ("INSERT INTO accountdata "
+             "(accountid, dataname, datavalue, lastmodified) "
+             "VALUES (:aid, :dn, :dv, :lm) "
+             "ON CONFLICT (accountid, dataname) "
+             "DO UPDATE "
+             "SET datavalue=:dv, lastmodified=:lm "
+             "RETURNING xmax");
+    } else if (mode == 2 || (mode == 0 && exists(db, getKey()))) {
+      insert = false;
+      sql = ("UPDATE accountdata SET datavalue=:dv,lastmodified=:lm "
+             " WHERE accountid=:aid AND dataname=:dn");
+    } else {
+      insert = true;
+      sql = ("INSERT INTO accountdata "
+             "(accountid,dataname,datavalue,lastmodified)"
+             " VALUES (:aid,:dn,:dv,:lm)");
     }
 
     auto prep = db.getPreparedStatement(sql);
@@ -272,12 +273,21 @@ DataFrame::storeUpdateHelper(LedgerDelta& delta, Database& db, bool insert)
     st.exchange(use(dataValue, "dv"));
     st.exchange(use(getLastModified(), "lm"));
 
+    int xmax;
+    if (pg) {
+      st.exchange(into(xmax));
+    }
+    
     st.define_and_bind();
     st.execute(true);
 
     if (st.get_affected_rows() != 1)
     {
         throw std::runtime_error("could not update SQL");
+    }
+
+    if (pg) {
+      insert = xmax == 0;
     }
 
     if (insert)

@@ -506,19 +506,7 @@ OfferFrame::computePrice() const
 }
 
 void
-OfferFrame::storeChange(LedgerDelta& delta, Database& db)
-{
-    storeUpdateHelper(delta, db, false);
-}
-
-void
-OfferFrame::storeAdd(LedgerDelta& delta, Database& db)
-{
-    storeUpdateHelper(delta, db, true);
-}
-
-void
-OfferFrame::storeUpdateHelper(LedgerDelta& delta, Database& db, bool insert)
+OfferFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
 {
     touch(delta);
 
@@ -561,28 +549,41 @@ OfferFrame::storeUpdateHelper(LedgerDelta& delta, Database& db, bool insert)
     }
 
     string sql;
-
-    if (insert)
-    {
-        sql = "INSERT INTO offers (sellerid,offerid,"
-              "sellingassettype,sellingassetcode,sellingissuer,"
-              "buyingassettype,buyingassetcode,buyingissuer,"
-              "amount,pricen,priced,price,flags,lastmodified) VALUES "
-              "(:sid,:oid,:sat,:sac,:si,:bat,:bac,:bi,:a,:pn,:pd,:p,:f,:l)";
+    bool insert = false;
+    
+    PGconn* pg = 0;
+    if (mode == 0) {
+      pg = db.getPGconn();
     }
-    else
-    {
-        sql = "UPDATE offers SET sellingassettype=:sat "
-              ",sellingassetcode=:sac,sellingissuer=:si,"
-              "buyingassettype=:bat,buyingassetcode=:bac,buyingissuer=:bi,"
-              "amount=:a,pricen=:pn,priced=:pd,price=:p,flags=:f,"
-              "lastmodified=:l WHERE offerid=:oid";
+
+    if (pg) {
+      sql = ("INSERT INTO offers "
+             "(sellerid, offerid, sellingassettype, sellingassetcode, sellingissuer, buyingassettype, buyingassetcode, buyingissuer, amount, pricen, priced, price, flags, lastmodified) "
+             "VALUES (:sid, :oid, :sat, :sac, :si, :bat, :bac, :bi, :a, :pn, :pd, :p, :f, :l) "
+             "ON CONFLICT (offerid) "
+             "DO UPDATE "
+             "SET sellingassettype = :sat, sellingassetcode = :sac, sellingissuer = :si, buyingassettype = :bat, buyingassetcode = :bac, buyingissuer = :bi, amount = :a, pricen = :pn, priced = :pd, price = :p, flags = :f, lastmodified = :l "
+             "RETURNING xmax");
+    } else if (mode == 2 || (mode == 0 && exists(db, getKey()))) {
+      insert = false;
+      sql = ("UPDATE offers SET sellingassettype=:sat "
+             ",sellingassetcode=:sac,sellingissuer=:si,"
+             "buyingassettype=:bat,buyingassetcode=:bac,buyingissuer=:bi,"
+             "amount=:a,pricen=:pn,priced=:pd,price=:p,flags=:f,"
+             "lastmodified=:l WHERE offerid=:oid");
+    } else {
+      insert = true;
+      sql = ("INSERT INTO offers (sellerid,offerid,"
+             "sellingassettype,sellingassetcode,sellingissuer,"
+             "buyingassettype,buyingassetcode,buyingissuer,"
+             "amount,pricen,priced,price,flags,lastmodified) VALUES "
+             "(:sid,:oid,:sat,:sac,:si,:bat,:bac,:bi,:a,:pn,:pd,:p,:f,:l)");
     }
 
     auto prep = db.getPreparedStatement(sql);
     auto& st = prep.statement();
 
-    if (insert)
+    if (pg || insert)
     {
         st.exchange(use(actIDStrKey, "sid"));
     }
@@ -600,6 +601,12 @@ OfferFrame::storeUpdateHelper(LedgerDelta& delta, Database& db, bool insert)
     st.exchange(use(price, "p"));
     st.exchange(use(mOffer.flags, "f"));
     st.exchange(use(getLastModified(), "l"));
+
+    int xmax;
+    if (pg) {
+      st.exchange(into(xmax));
+    }
+
     st.define_and_bind();
 
     auto timer =
@@ -609,6 +616,10 @@ OfferFrame::storeUpdateHelper(LedgerDelta& delta, Database& db, bool insert)
     if (st.get_affected_rows() != 1)
     {
         throw std::runtime_error("could not update SQL");
+    }
+
+    if (pg) {
+      insert = xmax == 0;
     }
 
     if (insert)
