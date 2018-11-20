@@ -37,8 +37,8 @@
 #include <thread>
 #include <vector>
 
-#include <libpq-fe.h>
 #include "soci-postgresql.h"
+#include <libpq-fe.h>
 
 extern "C" void register_factory_sqlite3();
 
@@ -331,10 +331,12 @@ Database::getSession()
 }
 
 PGconn*
-Database::getPGconn() {
-  soci::details::session_backend* backend = mSession.get_backend();
-  soci::postgresql_session_backend* pg = dynamic_cast<soci::postgresql_session_backend*>(backend);
-  return pg ? pg->conn_ : 0;
+Database::getPGconn()
+{
+    soci::details::session_backend* backend = mSession.get_backend();
+    soci::postgresql_session_backend* pg =
+        dynamic_cast<soci::postgresql_session_backend*>(backend);
+    return pg ? pg->conn_ : 0;
 }
 
 soci::connection_pool&

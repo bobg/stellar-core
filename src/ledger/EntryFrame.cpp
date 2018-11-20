@@ -212,12 +212,16 @@ EntryFrame::exists(Database& db, LedgerKey const& key)
     }
 }
 
-void EntryFrame::storeAdd(LedgerDelta& delta, Database& db) {
-  storeAddOrChange(delta, db, 1);
+void
+EntryFrame::storeAdd(LedgerDelta& delta, Database& db)
+{
+    storeAddOrChange(delta, db, 1);
 }
 
-void EntryFrame::storeChange(LedgerDelta& delta, Database& db) {
-  storeAddOrChange(delta, db, 2);
+void
+EntryFrame::storeChange(LedgerDelta& delta, Database& db)
+{
+    storeAddOrChange(delta, db, 2);
 }
 
 void

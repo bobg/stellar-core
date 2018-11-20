@@ -359,90 +359,114 @@ TrustFrame::storeDelete(LedgerDelta& delta, Database& db, LedgerKey const& key)
 void
 TrustFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
 {
-  auto key = getKey();
-  flushCachedEntry(key, db);
+    auto key = getKey();
+    flushCachedEntry(key, db);
 
-  if (mIsIssuer) {
-    return;
-  }
+    if (mIsIssuer)
+    {
+        return;
+    }
 
-  touch(delta);
+    touch(delta);
 
-  string actIDStrKey, issuerStrKey, assetCode;
-  getKeyFields(key, actIDStrKey, issuerStrKey, assetCode);
+    string actIDStrKey, issuerStrKey, assetCode;
+    getKeyFields(key, actIDStrKey, issuerStrKey, assetCode);
 
-  Liabilities liabilities;
-  soci::indicator liabilitiesInd = soci::i_null;
-  if (mTrustLine.ext.v() == 1) {
-    liabilities = mTrustLine.ext.v1().liabilities;
-    liabilitiesInd = soci::i_ok;
-  }
+    Liabilities liabilities;
+    soci::indicator liabilitiesInd = soci::i_null;
+    if (mTrustLine.ext.v() == 1)
+    {
+        liabilities = mTrustLine.ext.v1().liabilities;
+        liabilitiesInd = soci::i_ok;
+    }
 
-  string sql;
-  bool insert = false;
+    string sql;
+    bool insert = false;
 
-  PGconn* pg = 0;
-  if (mode == 0) {
-    pg = db.getPGconn();
-  }
+    PGconn* pg = 0;
+    if (mode == 0)
+    {
+        pg = db.getPGconn();
+    }
 
-  if (pg) {
-    sql = ("INSERT INTO trustlines "
-           "(accountid, assettype, issuer, assetcode, balance, tlimit, flags, lastmodified, buyingliabilities, sellingliabilities) "
-           "VALUES (:accountid, :assettype, :issuer, :assetcode, :b, :tl, :a, :lm, :bl, :sl) "
-           "ON CONFLICT (accountid, issuer, assetcode) DO UPDATE "
-           "SET balance=:b, tlimit=:tl, flags=:a, lastmodified=:lm, buyingliabilities=:bl, sellingliabilities=:sl "
-           "RETURNING xmax");
-  } else if (mode == 2 || (mode == 0 && exists(db, key))) {
-    insert = false;
-    sql = ("UPDATE trustlines "
-           "SET balance=:b, tlimit=:tl, flags=:a, lastmodified=:lm, "
-           "buyingliabilities=:bl, sellingliabilities=:sl "
-           "WHERE accountid=:accountid AND issuer=:issuer AND assetcode=:assetcode");
-  } else {
-    insert = true;
-    sql = ("INSERT INTO trustlines "
-           "(accountid, assettype, issuer, assetcode, balance, tlimit, flags, lastmodified, buyingliabilities, sellingliabilities) "
-           "VALUES (:accountid, :assettype, :issuer, :assetcode, :b, :tl, :a, :lm, :bl, :sl)");
-  }
-  auto prep = db.getPreparedStatement(sql);
-  auto& st = prep.statement();
-  st.exchange(use(actIDStrKey, "accountid"));
-  st.exchange(use(issuerStrKey, "issuer"));
-  st.exchange(use(assetCode, "assetcode"));
-  st.exchange(use(mTrustLine.balance, "b"));
-  st.exchange(use(mTrustLine.limit, "tl"));
-  st.exchange(use(mTrustLine.flags, "a"));
-  st.exchange(use(getLastModified(), "lm"));
-  st.exchange(use(liabilities.buying, liabilitiesInd, "bl"));
-  st.exchange(use(liabilities.selling, liabilitiesInd, "sl"));
-  if (pg || insert) {
-    unsigned int assetType = key.trustLine().asset.type();
-    st.exchange(use(assetType, "assettype"));
-  }
-  int xmax;
-  if (pg) {
-    st.exchange(into(xmax));
-  }
-  st.define_and_bind();
-  if (insert) {
-    auto timer = db.getInsertTimer("trust");
-    st.execute(true);
-  } else {
-    auto timer = db.getUpdateTimer("trust");
-    st.execute(true);
-  }
-  if (st.get_affected_rows() != 1) {
-    throw std::runtime_error("Could not update data in SQL");
-  }
-  if (pg) {
-    insert = xmax == 0;
-  }
-  if (insert) {
-    delta.addEntry(*this);
-  } else {
-    delta.modEntry(*this);
-  }
+    if (pg)
+    {
+        sql = ("INSERT INTO trustlines "
+               "(accountid, assettype, issuer, assetcode, balance, tlimit, "
+               "flags, lastmodified, buyingliabilities, sellingliabilities) "
+               "VALUES (:accountid, :assettype, :issuer, :assetcode, :b, :tl, "
+               ":a, :lm, :bl, :sl) "
+               "ON CONFLICT (accountid, issuer, assetcode) DO UPDATE "
+               "SET balance=:b, tlimit=:tl, flags=:a, lastmodified=:lm, "
+               "buyingliabilities=:bl, sellingliabilities=:sl "
+               "RETURNING xmax");
+    }
+    else if (mode == 2 || (mode == 0 && exists(db, key)))
+    {
+        insert = false;
+        sql = ("UPDATE trustlines "
+               "SET balance=:b, tlimit=:tl, flags=:a, lastmodified=:lm, "
+               "buyingliabilities=:bl, sellingliabilities=:sl "
+               "WHERE accountid=:accountid AND issuer=:issuer AND "
+               "assetcode=:assetcode");
+    }
+    else
+    {
+        insert = true;
+        sql = ("INSERT INTO trustlines "
+               "(accountid, assettype, issuer, assetcode, balance, tlimit, "
+               "flags, lastmodified, buyingliabilities, sellingliabilities) "
+               "VALUES (:accountid, :assettype, :issuer, :assetcode, :b, :tl, "
+               ":a, :lm, :bl, :sl)");
+    }
+    auto prep = db.getPreparedStatement(sql);
+    auto& st = prep.statement();
+    st.exchange(use(actIDStrKey, "accountid"));
+    st.exchange(use(issuerStrKey, "issuer"));
+    st.exchange(use(assetCode, "assetcode"));
+    st.exchange(use(mTrustLine.balance, "b"));
+    st.exchange(use(mTrustLine.limit, "tl"));
+    st.exchange(use(mTrustLine.flags, "a"));
+    st.exchange(use(getLastModified(), "lm"));
+    st.exchange(use(liabilities.buying, liabilitiesInd, "bl"));
+    st.exchange(use(liabilities.selling, liabilitiesInd, "sl"));
+    if (pg || insert)
+    {
+        unsigned int assetType = key.trustLine().asset.type();
+        st.exchange(use(assetType, "assettype"));
+    }
+    int xmax;
+    if (pg)
+    {
+        st.exchange(into(xmax));
+    }
+    st.define_and_bind();
+    if (insert)
+    {
+        auto timer = db.getInsertTimer("trust");
+        st.execute(true);
+    }
+    else
+    {
+        auto timer = db.getUpdateTimer("trust");
+        st.execute(true);
+    }
+    if (st.get_affected_rows() != 1)
+    {
+        throw std::runtime_error("Could not update data in SQL");
+    }
+    if (pg)
+    {
+        insert = xmax == 0;
+    }
+    if (insert)
+    {
+        delta.addEntry(*this);
+    }
+    else
+    {
+        delta.modEntry(*this);
+    }
 }
 
 static const char* trustLineColumnSelector =

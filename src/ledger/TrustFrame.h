@@ -62,7 +62,8 @@ class TrustFrame : public EntryFrame
 
     // Instance-based overrides of EntryFrame.
     void storeDelete(LedgerDelta& delta, Database& db) const override;
-    void storeAddOrChange(LedgerDelta& delta, Database& db, int mode = 0) override;
+    void storeAddOrChange(LedgerDelta& delta, Database& db,
+                          int mode = 0) override;
 
     // Static helper that don't assume an instance.
     static void storeDelete(LedgerDelta& delta, Database& db,

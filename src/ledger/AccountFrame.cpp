@@ -769,104 +769,126 @@ AccountFrame::applySigners(Database& db, bool insert)
 void
 AccountFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
 {
-  touch(delta);
-  flushCachedEntry(db);
+    touch(delta);
+    flushCachedEntry(db);
 
-  string actIDStrKey = KeyUtils::toStrKey(mAccountEntry.accountID);
+    string actIDStrKey = KeyUtils::toStrKey(mAccountEntry.accountID);
 
-  soci::indicator inflation_ind = soci::i_null;
-  string inflationDestStrKey;
-  if (mAccountEntry.inflationDest) {
-    inflationDestStrKey = KeyUtils::toStrKey(*mAccountEntry.inflationDest);
-    inflation_ind = soci::i_ok;
-  }
-
-  Liabilities liabilities;
-  soci::indicator liabilitiesInd = soci::i_null;
-  if (mAccountEntry.ext.v() == 1) {
-    liabilities = mAccountEntry.ext.v1().liabilities;
-    liabilitiesInd = soci::i_ok;
-  }
-
-  string thresholds(decoder::encode_b64(mAccountEntry.thresholds));
-
-  string sql;
-  bool insert = false;
-
-  PGconn* pg = 0;
-  if (mode == 0) {
-    pg = db.getPGconn();
-  }
-
-  if (pg) {
-    sql = ("INSERT INTO accounts "
-           "(accountid, balance, seqnum, numsubentries, inflationdest, homedomain, thresholds, flags, lastmodified, buyingliabilities, sellingliabilities) "
-           "VALUES (:id, :v1, :v2, :v3, :v4, :v5, :v6, :v7, :v8, :v9, :v10) "
-           "ON CONFLICT (accountid) "
-           "DO UPDATE "
-           "SET balance = :v1, seqnum = :v2, numsubentries = :v3, inflationdest = :v4, homedomain = :v5, thresholds = :v6, flags = :v7, lastmodified = :v8, buyingliabilities = :v9, sellingliabilities = :v10 "
-           "RETURNING xmax");
-  } else if (mode == 2 || (mode == 0 && exists(db, getKey()))) {
-    insert = false;
-    sql = ("UPDATE accounts SET balance = :v1, seqnum = :v2, "
-           "numsubentries = :v3, "
-           "inflationdest = :v4, homedomain = :v5, thresholds = :v6, "
-           "flags = :v7, lastmodified = :v8, buyingliabilities = :v9, "
-           "sellingliabilities = :v10 WHERE accountid = :id");      
-  } else {
-    insert = true;
-    sql = ("INSERT INTO accounts ( accountid, balance, seqnum, "
-           "numsubentries, inflationdest, homedomain, thresholds, flags, "
-           "lastmodified, buyingliabilities, sellingliabilities ) "
-           "VALUES ( :id, :v1, :v2, :v3, :v4, :v5, :v6, :v7, :v8, :v9, :v10 "
-           ")");
-  }
-  auto prep = db.getPreparedStatement(sql);
-  {
-    soci::statement& st = prep.statement();
-    st.exchange(use(actIDStrKey, "id"));
-    st.exchange(use(mAccountEntry.balance, "v1"));
-    st.exchange(use(mAccountEntry.seqNum, "v2"));
-    st.exchange(use(mAccountEntry.numSubEntries, "v3"));
-    st.exchange(use(inflationDestStrKey, inflation_ind, "v4"));
-    string homeDomain(mAccountEntry.homeDomain);
-    st.exchange(use(homeDomain, "v5"));
-    st.exchange(use(thresholds, "v6"));
-    st.exchange(use(mAccountEntry.flags, "v7"));
-    st.exchange(use(getLastModified(), "v8"));
-    st.exchange(use(liabilities.buying, liabilitiesInd, "v9"));
-    st.exchange(use(liabilities.selling, liabilitiesInd, "v10"));
-
-    int xmax;
-    if (pg) {
-      st.exchange(into(xmax));
-    }
-    
-    st.define_and_bind();
-
+    soci::indicator inflation_ind = soci::i_null;
+    string inflationDestStrKey;
+    if (mAccountEntry.inflationDest)
     {
-      auto timer = (pg || insert) ? db.getInsertTimer("account")
-        : db.getUpdateTimer("account");
-      st.execute(true);
+        inflationDestStrKey = KeyUtils::toStrKey(*mAccountEntry.inflationDest);
+        inflation_ind = soci::i_ok;
     }
 
-    if (st.get_affected_rows() != 1) {
-      throw std::runtime_error("Could not update data in SQL");
+    Liabilities liabilities;
+    soci::indicator liabilitiesInd = soci::i_null;
+    if (mAccountEntry.ext.v() == 1)
+    {
+        liabilities = mAccountEntry.ext.v1().liabilities;
+        liabilitiesInd = soci::i_ok;
     }
 
-    if (pg) {
-      insert = xmax == 0;
+    string thresholds(decoder::encode_b64(mAccountEntry.thresholds));
+
+    string sql;
+    bool insert = false;
+
+    PGconn* pg = 0;
+    if (mode == 0)
+    {
+        pg = db.getPGconn();
     }
 
-    if (insert) {
-      delta.addEntry(*this);
-    } else {
-      delta.modEntry(*this);
+    if (pg)
+    {
+        sql =
+            ("INSERT INTO accounts "
+             "(accountid, balance, seqnum, numsubentries, inflationdest, "
+             "homedomain, thresholds, flags, lastmodified, buyingliabilities, "
+             "sellingliabilities) "
+             "VALUES (:id, :v1, :v2, :v3, :v4, :v5, :v6, :v7, :v8, :v9, :v10) "
+             "ON CONFLICT (accountid) "
+             "DO UPDATE "
+             "SET balance = :v1, seqnum = :v2, numsubentries = :v3, "
+             "inflationdest = :v4, homedomain = :v5, thresholds = :v6, flags = "
+             ":v7, lastmodified = :v8, buyingliabilities = :v9, "
+             "sellingliabilities = :v10 "
+             "RETURNING xmax");
     }
-  }
-  if (mUpdateSigners) {
-    applySigners(db, insert);
-  }
+    else if (mode == 2 || (mode == 0 && exists(db, getKey())))
+    {
+        insert = false;
+        sql = ("UPDATE accounts SET balance = :v1, seqnum = :v2, "
+               "numsubentries = :v3, "
+               "inflationdest = :v4, homedomain = :v5, thresholds = :v6, "
+               "flags = :v7, lastmodified = :v8, buyingliabilities = :v9, "
+               "sellingliabilities = :v10 WHERE accountid = :id");
+    }
+    else
+    {
+        insert = true;
+        sql =
+            ("INSERT INTO accounts ( accountid, balance, seqnum, "
+             "numsubentries, inflationdest, homedomain, thresholds, flags, "
+             "lastmodified, buyingliabilities, sellingliabilities ) "
+             "VALUES ( :id, :v1, :v2, :v3, :v4, :v5, :v6, :v7, :v8, :v9, :v10 "
+             ")");
+    }
+    auto prep = db.getPreparedStatement(sql);
+    {
+        soci::statement& st = prep.statement();
+        st.exchange(use(actIDStrKey, "id"));
+        st.exchange(use(mAccountEntry.balance, "v1"));
+        st.exchange(use(mAccountEntry.seqNum, "v2"));
+        st.exchange(use(mAccountEntry.numSubEntries, "v3"));
+        st.exchange(use(inflationDestStrKey, inflation_ind, "v4"));
+        string homeDomain(mAccountEntry.homeDomain);
+        st.exchange(use(homeDomain, "v5"));
+        st.exchange(use(thresholds, "v6"));
+        st.exchange(use(mAccountEntry.flags, "v7"));
+        st.exchange(use(getLastModified(), "v8"));
+        st.exchange(use(liabilities.buying, liabilitiesInd, "v9"));
+        st.exchange(use(liabilities.selling, liabilitiesInd, "v10"));
+
+        int xmax;
+        if (pg)
+        {
+            st.exchange(into(xmax));
+        }
+
+        st.define_and_bind();
+
+        {
+            auto timer = (pg || insert) ? db.getInsertTimer("account")
+                                        : db.getUpdateTimer("account");
+            st.execute(true);
+        }
+
+        if (st.get_affected_rows() != 1)
+        {
+            throw std::runtime_error("Could not update data in SQL");
+        }
+
+        if (pg)
+        {
+            insert = xmax == 0;
+        }
+
+        if (insert)
+        {
+            delta.addEntry(*this);
+        }
+        else
+        {
+            delta.modEntry(*this);
+        }
+    }
+    if (mUpdateSigners)
+    {
+        applySigners(db, insert);
+    }
 }
 
 void

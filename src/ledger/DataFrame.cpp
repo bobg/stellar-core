@@ -242,27 +242,33 @@ DataFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
     bool insert = false;
 
     PGconn* pg = 0;
-    if (mode == 0) {
+    if (mode == 0)
+    {
         pg = db.getPGconn();
     }
 
-    if (pg) {
-      sql = ("INSERT INTO accountdata "
-             "(accountid, dataname, datavalue, lastmodified) "
-             "VALUES (:aid, :dn, :dv, :lm) "
-             "ON CONFLICT (accountid, dataname) "
-             "DO UPDATE "
-             "SET datavalue=:dv, lastmodified=:lm "
-             "RETURNING xmax");
-    } else if (mode == 2 || (mode == 0 && exists(db, getKey()))) {
-      insert = false;
-      sql = ("UPDATE accountdata SET datavalue=:dv,lastmodified=:lm "
-             " WHERE accountid=:aid AND dataname=:dn");
-    } else {
-      insert = true;
-      sql = ("INSERT INTO accountdata "
-             "(accountid,dataname,datavalue,lastmodified)"
-             " VALUES (:aid,:dn,:dv,:lm)");
+    if (pg)
+    {
+        sql = ("INSERT INTO accountdata "
+               "(accountid, dataname, datavalue, lastmodified) "
+               "VALUES (:aid, :dn, :dv, :lm) "
+               "ON CONFLICT (accountid, dataname) "
+               "DO UPDATE "
+               "SET datavalue=:dv, lastmodified=:lm "
+               "RETURNING xmax");
+    }
+    else if (mode == 2 || (mode == 0 && exists(db, getKey())))
+    {
+        insert = false;
+        sql = ("UPDATE accountdata SET datavalue=:dv,lastmodified=:lm "
+               " WHERE accountid=:aid AND dataname=:dn");
+    }
+    else
+    {
+        insert = true;
+        sql = ("INSERT INTO accountdata "
+               "(accountid,dataname,datavalue,lastmodified)"
+               " VALUES (:aid,:dn,:dv,:lm)");
     }
 
     auto prep = db.getPreparedStatement(sql);
@@ -274,10 +280,11 @@ DataFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
     st.exchange(use(getLastModified(), "lm"));
 
     int xmax;
-    if (pg) {
-      st.exchange(into(xmax));
+    if (pg)
+    {
+        st.exchange(into(xmax));
     }
-    
+
     st.define_and_bind();
     st.execute(true);
 
@@ -286,8 +293,9 @@ DataFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode)
         throw std::runtime_error("could not update SQL");
     }
 
-    if (pg) {
-      insert = xmax == 0;
+    if (pg)
+    {
+        insert = xmax == 0;
     }
 
     if (insert)
