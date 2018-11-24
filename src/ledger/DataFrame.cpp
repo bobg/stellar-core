@@ -316,8 +316,27 @@ DataFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode,
 }
 
 void
-DataFrame::mergeBulkTable(soci::session& sess)
+DataFrame::mergeAccumulated(soci::session& dest, soci::session& src)
 {
+  vector<xxx> accountids;
+  vector<xxx> datanames;
+  vector<xxx> datavalues;
+  vector<xxx> lastmodifieds;
+
+  soci::statement st =
+    (src.prepare <<
+     "SELECT accountid, dataname, datavalue, lastmodified "
+     "FROM accountdata",
+     into(accountid), into(dataname), into(datavalue), into(lastmodified));
+  st.execute(true);
+
+  while (st.got_data()) {
+    accountids.push_back(accountid);
+    datanames.push_back(dataname);
+    datavalues.push_back(datavalue);
+    lastmodifieds.push_back(lastmodified);
+  }
+
     sess << "UPDATE accountdata "
          << "SET datavalue = b.datavalue, lastmodified = b.lastmodified "
          << "FROM accountdata_bulk b "

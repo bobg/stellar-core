@@ -63,7 +63,7 @@ class DataFrame : public EntryFrame
                           bool bulk = false) override;
 
     // Static helpers that don't assume an instance.
-    static void mergeBulkTable(soci::session& sess);
+    static void mergeAccumulated(soci::session& dest, soci::session& src);
     static void storeDelete(LedgerDelta& delta, Database& db,
                             LedgerKey const& key);
     static bool exists(Database& db, LedgerKey const& key);

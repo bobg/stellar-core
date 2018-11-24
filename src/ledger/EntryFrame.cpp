@@ -212,45 +212,16 @@ EntryFrame::exists(Database& db, LedgerKey const& key)
     }
 }
 
-static std::array<std::string, 4> bulkTables{
-    {"accounts", "accountdata", "offers", "trustlines"}};
-
-bool
-EntryFrame::createBulkTables(Database& db)
-{
-    if (false && !db.isPG())
-    { // xxx
-        return false;
-    }
-    auto& session = db.getSession();
-    for (auto& t : bulkTables)
-    {
-        session << "CREATE TEMPORARY TABLE " << t << "_bulk "
-                << "(LIKE " << t << " INCLUDING INDEXES) "
-                << "ON COMMIT DROP";
-    }
-    return true;
-}
-
 void
-EntryFrame::mergeBulkTables(Database& db)
+EntryFrame::mergeAccumulated(Database& dest, Database& src)
 {
-    if (false && !db.isPG())
-    { // xxx
-        return;
-    }
-    auto& session = db.getSession();
-    AccountFrame::mergeBulkTable(session);
-    DataFrame::mergeBulkTable(session);
-    OfferFrame::mergeBulkTable(session);
-    TrustFrame::mergeBulkTable(session);
-}
+  auto& destSession = dest.getSession();
+  auto& srcSession = src.getSession();
 
-void
-EntryFrame::dropBulkTables(Database& db)
-{
-    // dropping the bulk tables is handled by ON COMMIT DROP
-    return;
+  AccountFrame::mergeAccumulated(destSession, srcSession);
+  DataFrame::mergeAccumulated(destSession, srcSession);
+  OfferFrame::mergeAccumulated(destSession, srcSession);
+  TrustFrame::mergeAccumulated(destSession, srcSession);
 }
 
 void

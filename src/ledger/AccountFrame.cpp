@@ -812,41 +812,53 @@ AccountFrame::storeAddOrChange(LedgerDelta& delta, Database& db, int mode,
 }
 
 void
-AccountFrame::mergeBulkTable(soci::session& sess)
+AccountFrame::mergeAccumulated(soci::session& dest, soci::session& src)
 {
-    try
-    {
-        sess
-            << "UPDATE accounts "
-            << "SET balance = b.balance, seqnum = b.seqnum, numsubentries = "
-               "b.numsubentries, inflationdest = b.inflationdest, homedomain = "
-               "b.homedomain, thresholds = b.thresholds, flags = b.flags, "
-               "lastmodified = b.lastmodified, buyingliabilities = "
-               "b.buyingliabilities, sellingliabilities = b.sellingliabilities "
-            << "FROM accounts_bulk b "
-            << "WHERE accounts.accountid = b.accountid";
-    }
-    catch (...)
-    {
-        std::cout
-            << "* exception from AccountFrame::mergeBulkTable (UPDATE clause)"
-            << endl;
-        throw;
-    }
+  vector<xxx> accountids;
+  vector<xxx> balances;
+  vector<xxx> seqnums;
+  vector<xxx> numsubentrieses;
+  vector<xxx> inflationdests;
+  vector<bool> inflationdestsInds;
+  vector<xxx> homedomains;
+  vector<xxx> thresholdses;
+  vector<xxx> flagses;
+  vector<xxx> lastmodifieds;
+  vector<xxx> buyingliabilitieses;
+  vector<bool> buyingliabilitiesesInds;
+  vector<xxx> sellingliabilitieses;
+  vector<bool> sellingliabilitiesesInds;
 
-    try
-    {
-        sess << "INSERT INTO accounts "
-             << "SELECT * FROM accounts_bulk "
-             << "ON CONFLICT (accountid) DO NOTHING";
-    }
-    catch (...)
-    {
-        std::cout
-            << "* exception from AccountFrame::mergeBulkTable (INSERT clause)"
-            << endl;
-        throw;
-    }
+  soci::statement st = 
+    (src.prepare << "SELECT accountid, balance, seqnum, numsubentries, inflationdest, homedomain, thresholds, flags, lastmodified, buyingliabilities, sellingliabilities FROM accounts",
+     into(accountid), into(balance), into(seqnum), into(numsubentries), into(inflationdest, inflationdestInd), into(homedomain), into(thresholds), into(flags), into(lastmodified), into(buyingliabilities, buyingliabilitiesInd), into(sellingliabilities, sellingliabilitiesInd));
+  st.execute(true);
+
+  while (st.got_data()) {
+    accountids.push_back(accountid);
+    balances.push_back(balance);
+    seqnums.push_back(seqnums);
+    numsubentrieses.push_back(numsubentries);
+    inflationdests.push_back(inflationdests);
+    inflationdestsInds.push_back(inflationdestInd);
+    homedomains.push_back(homedomain);
+    thresholdses.push_back(thresholds);
+    flagses.push_back(flags);
+    lastmodifieds.push_back(lastmodified);
+    buyingliabilitieses.push_back(buyingliabilities);
+    buyingliabilitiesesInds.push_back(buyingliabilitiesInd);
+    sellingliabilitieses.push_back(sellingliabilities);
+    sellingliabilitiesesInds.push_back(sellingliabilitiesInd);
+  }
+
+  st = (dest.prepare <<
+        "WITH a AS (SELECT unnest($1::xxx[]) AS accountid, unnest($2::xxx[]) AS balance, xxx) "
+        "INSERT INTO accounts (accountid, balance, seqnum, numsubentries, inflationdest, homedomain, thresholds, flags, lastmodified, buyingliabilities, sellingliabilities) "
+        "SELECT a.accountid, a.balance, ... FROM a "
+        "ON CONFLICT DO UPDATE "
+        "SET balance = a.balance, seqnum = a.seqnum, ...",
+        use(accountids), use(balances), ...);
+  st.execute(true);
 }
 
 void

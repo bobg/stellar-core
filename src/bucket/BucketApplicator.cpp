@@ -9,6 +9,10 @@
 #include "util/Logging.h"
 
 #include <chrono>
+#include "main/Application.h"
+#include "main/Config.h"
+#include "database/Database.h"
+#include "util/Timer.h"
 
 namespace stellar
 {
@@ -24,29 +28,32 @@ BucketApplicator::operator bool() const
     return (bool)mBucketIter;
 }
 
-class bulkTableMgr
+class accumulator
 {
-  public:
-    bulkTableMgr(Database& db)
-        : mDb(db), mCreated(EntryFrame::createBulkTables(db))
-    {
+public:
+  accumulator(Database& outerDb): mOuterDb(outerDb), mDb(0) {
+    if (!outerDB.isPG()) {
+      return;
     }
-    ~bulkTableMgr()
-    {
-        if (mCreated)
-        {
-            EntryFrame::dropBulkTables(mDb);
-        }
-    }
+    Application& outerApp = outerDb.getApp();
+    VirtualClock& clock = app.getClock();
+    Config conf = outerApp.getConfig(); // makes a copy
+    // xxx make conf changes
+    Application::pointer app = Application::create(clock, conf);
+    mDb = new Database(*app);
+  }
 
-    operator bool() const
-    {
-        return mCreated;
+  ~accumulator(){
+    if (!mDb) {
+      return;
     }
+    EntryFrame::mergeAccumulated(mOuterDb, *mDb);
+    delete mDb;
+  }
 
-  private:
-    Database& mDb;
-    bool mCreated;
+private:
+  Database& mOuterDb;
+  Database* mDb;
 };
 
 typedef std::chrono::duration<double, std::ratio<1>> second_t;
@@ -64,36 +71,31 @@ BucketApplicator::advance()
     soci::transaction sqlTx(mDb.getSession());
 
     {
-        bulkTableMgr bulk(mDb);
+      accumulator acc(mDb);
 
-        while (mBucketIter)
+      while (mBucketIter)
         {
-            LedgerHeader lh;
-            LedgerDelta delta(lh, mDb, false);
+          LedgerHeader lh;
+          LedgerDelta delta(lh, mDb, false);
 
-            auto const& entry = *mBucketIter;
-            if (entry.type() == LIVEENTRY)
+          auto const& entry = *mBucketIter;
+          if (entry.type() == LIVEENTRY)
             {
-                EntryFrame::pointer ep = EntryFrame::FromXDR(entry.liveEntry());
-                ep->storeAddOrChange(delta, mDb, 0, bulk);
+              EntryFrame::pointer ep = EntryFrame::FromXDR(entry.liveEntry());
+              ep->storeAddOrChange(delta, mDb, 0, bulk);
             }
-            else
+          else
             {
-                EntryFrame::storeDelete(delta, mDb, entry.deadEntry());
+              EntryFrame::storeDelete(delta, mDb, entry.deadEntry());
             }
-            ++mBucketIter;
-            // No-op, just to avoid needless rollback.
-            delta.commit();
-            if ((++mSize & 0xff) == 0xff)
+          ++mBucketIter;
+          // No-op, just to avoid needless rollback.
+          delta.commit();
+          if ((++mSize & 0xff) == 0xff)
             {
-                break;
+              break;
             }
-            ++adv_iters;
-        }
-
-        if (bulk)
-        {
-            EntryFrame::mergeBulkTables(mDb);
+          ++adv_iters;
         }
     }
 

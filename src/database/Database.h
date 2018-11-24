@@ -114,6 +114,8 @@ class Database : NonMovableOrCopyable
     // if there is a connection error, this will throw.
     Database(Application& app);
 
+    Application& getApp() { return mApp; }
+
     // Return a crude meter of total queries to the db, for use in
     // overlay/LoadManager.
     medida::Meter& getQueryMeter();
